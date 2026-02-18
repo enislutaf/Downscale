@@ -8,7 +8,7 @@ from pathlib import Path
 st.set_page_config(page_title="Video Downscaler", page_icon="🎬", layout="centered")
 
 st.title("🎬 Video Downscaler")
-st.caption("Downscale your videos to 1280×720 (720p)")
+st.caption("Downscale your videos to 720×1280 (vertical 720p)")
 
 uploaded_files = st.file_uploader(
     "Upload your videos",
@@ -37,10 +37,20 @@ if uploaded_files:
             output_path = os.path.join(tempfile.gettempdir(), output_filename)
 
             try:
+                # Step 1: scale down to fit within 720x1280, preserving aspect ratio, pad with black bars
+                # Step 2: zoom in 5% (scale to 105%) to fill black bars
+                # Step 3: crop exactly to 720x1280
+                vf = (
+                    "scale=720:1280:force_original_aspect_ratio=decrease,"
+                    "pad=720:1280:(ow-iw)/2:(oh-ih)/2,"
+                    "scale=iw*1.05:ih*1.05,"
+                    "crop=720:1280"
+                )
+
                 cmd = [
                     "ffmpeg", "-y",
                     "-i", input_path,
-                    "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2",
+                    "-vf", vf,
                     "-vcodec", "libx264",
                     "-acodec", "aac",
                     "-crf", "23",
