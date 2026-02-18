@@ -1,5 +1,5 @@
 import streamlit as st
-import ffmpeg
+import subprocess
 import os
 import tempfile
 import zipfile
@@ -28,7 +28,8 @@ if uploaded_files:
         for i, uploaded_file in enumerate(uploaded_files):
             status_text.text(f"Processing: {uploaded_file.name} ({i + 1}/{len(uploaded_files)})")
 
-            with tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploaded_file.name).suffix) as tmp_in:
+            suffix = Path(uploaded_file.name).suffix or ".mp4"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_in:
                 tmp_in.write(uploaded_file.read())
                 input_path = tmp_in.name
 
@@ -36,28 +37,31 @@ if uploaded_files:
             output_path = os.path.join(tempfile.gettempdir(), output_filename)
 
             try:
-                (
-                    ffmpeg
-                    .input(input_path)
-                    .output(
-                        output_path,
-                        vf="scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2",
-                        vcodec="libx264",
-                        acodec="aac",
-                        crf=23,
-                        preset="fast",
-                    )
-                    .overwrite_output()
-                    .run(quiet=True)
-                )
-                output_paths.append((output_filename, output_path))
-                with results_placeholder:
-                    st.success(f"✅ {uploaded_file.name} → done")
-            except ffmpeg.Error as e:
-                with results_placeholder:
-                    st.error(f"❌ Failed: {uploaded_file.name} — {e.stderr.decode() if e.stderr else str(e)}")
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-i", input_path,
+                    "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2",
+                    "-vcodec", "libx264",
+                    "-acodec", "aac",
+                    "-crf", "23",
+                    "-preset", "fast",
+                    output_path
+                ]
+                result = subprocess.run(cmd, capture_output=True, text=True)
+
+                if result.returncode == 0:
+                    output_paths.append((output_filename, output_path))
+                    with results_placeholder:
+                        st.success(f"✅ {uploaded_file.name} → done")
+                else:
+                    with results_placeholder:
+                        st.error(f"❌ Failed: {uploaded_file.name}\n{result.stderr[-300:]}")
+            except FileNotFoundError:
+                st.error("❌ FFmpeg binary not found. Make sure packages.txt contains 'ffmpeg'.")
+                break
             finally:
-                os.unlink(input_path)
+                if os.path.exists(input_path):
+                    os.unlink(input_path)
 
             progress_bar.progress((i + 1) / len(uploaded_files))
 
